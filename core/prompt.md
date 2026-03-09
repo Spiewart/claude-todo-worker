@@ -33,9 +33,13 @@ maintainer to review.
 6. Run the project's test/lint/type-check suite. Look at `CLAUDE.md`, `Makefile`,
    `pyproject.toml`, `package.json`, or similar for the correct commands.
 7. Fix any failures. Iterate until clean.
-8. Commit with a descriptive message.
-9. Push the branch: `git push -u origin HEAD`
-10. Create a PR with `gh pr create`. Include in the body:
+8. **Mark the TODO as done**: Edit `TODO.md` and wrap the completed item with
+   `~~strikethrough~~` markdown. For example, change
+   `- fix the authentication bug` to `- ~~fix the authentication bug~~`.
+   This signals to the maintainer that the item was addressed in this PR.
+9. Commit with a descriptive message.
+10. Push the branch: `git push -u origin HEAD`
+11. Create a PR with `gh pr create`. Include in the body:
     - Summary of what was done and why
     - Which TODO.md item was addressed
     - Bullet list of changes
@@ -44,12 +48,6 @@ maintainer to review.
 
 ## Important Rules
 
-- **Strikethrough completed TODOs**: After implementing a TODO item, wrap the
-  completed line in TODO.md with `~~strikethrough~~` markdown. For example:
-  `- ~~fix the authentication bug~~`
-  Note: if the project uses auto-generated TODO sections (e.g., from source code
-  comments), strikethroughs there may be overwritten — that's fine, removing the
-  source comment handles it.
 - Do NOT switch branches — you are already on the correct branch.
 - If the item is too large for one session, implement a meaningful, mergeable
   subset and note remaining work in the PR description.
