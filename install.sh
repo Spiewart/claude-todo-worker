@@ -12,6 +12,7 @@
 #   --prefix NAME     Branch prefix (default: "auto")
 #   --timeout N       Max run time in seconds (default: 7200)
 #   --no-schedule     Install files only, skip launchd setup
+#   --force           Overwrite existing prompt.md and config.sh
 # =============================================================================
 set -euo pipefail
 
@@ -27,6 +28,7 @@ MINUTE=0
 BRANCH_PREFIX="auto"
 TIMEOUT=7200
 SKIP_SCHEDULE=false
+FORCE=false
 
 usage() {
     echo "Usage: $0 <repo-path> [options]"
@@ -41,6 +43,7 @@ usage() {
     echo "  --prefix NAME      Branch prefix (default: \"auto\")"
     echo "  --timeout N        Max run time in seconds (default: 7200)"
     echo "  --no-schedule      Install files only, skip launchd setup"
+    echo "  --force            Overwrite existing prompt.md and config.sh"
     echo "  --help, -h         Show this help"
     exit 0
 }
@@ -60,6 +63,7 @@ while [[ $# -gt 0 ]]; do
         --prefix)     BRANCH_PREFIX="$2"; shift 2 ;;
         --timeout)    TIMEOUT="$2"; shift 2 ;;
         --no-schedule) SKIP_SCHEDULE=true; shift ;;
+        --force)      FORCE=true; shift ;;
         --help|-h)    usage ;;
         *)            echo "Unknown option: $1"; usage ;;
     esac
@@ -105,18 +109,18 @@ chmod +x "$WORKER_DIR/run.sh"
 # ---------------------------------------------------------------------------
 # Install prompt.md (only if not already customized)
 # ---------------------------------------------------------------------------
-if [[ -f "$WORKER_DIR/prompt.md" ]]; then
-    echo "Keeping existing prompt.md (custom version found)"
+if [[ -f "$WORKER_DIR/prompt.md" ]] && [[ "$FORCE" != true ]]; then
+    echo "Keeping existing prompt.md (use --force to overwrite)"
 else
-    echo "Installing generic prompt.md..."
+    echo "Installing prompt.md..."
     cp "$SCRIPT_DIR/core/prompt.md" "$WORKER_DIR/prompt.md"
 fi
 
 # ---------------------------------------------------------------------------
 # Generate config.sh
 # ---------------------------------------------------------------------------
-if [[ -f "$WORKER_DIR/config.sh" ]]; then
-    echo "Keeping existing config.sh"
+if [[ -f "$WORKER_DIR/config.sh" ]] && [[ "$FORCE" != true ]]; then
+    echo "Keeping existing config.sh (use --force to overwrite)"
 else
     echo "Generating config.sh..."
     sed -e "s|__REPO_NAME__|$REPO_NAME|g" \
