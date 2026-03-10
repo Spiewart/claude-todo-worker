@@ -148,15 +148,17 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Append worker conventions to CLAUDE.md
+# Append worker conventions to .claude/CLAUDE.md
 # ---------------------------------------------------------------------------
-CLAUDE_MD="$REPO_DIR/CLAUDE.md"
+CLAUDE_MD="$REPO_DIR/.claude/CLAUDE.md"
 MARKER="<!-- claude-todo-worker -->"
 
+mkdir -p "$REPO_DIR/.claude"
+
 if grep -qF "$MARKER" "$CLAUDE_MD" 2>/dev/null; then
-    echo "CLAUDE.md already has todo-worker section"
+    echo ".claude/CLAUDE.md already has todo-worker section"
 else
-    echo "Appending todo-worker conventions to CLAUDE.md..."
+    echo "Appending todo-worker conventions to .claude/CLAUDE.md..."
     cat >> "$CLAUDE_MD" <<EOF
 
 $MARKER
