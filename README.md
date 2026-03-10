@@ -19,6 +19,9 @@ cd claude-todo-worker
   --venv ~/.virtualenvs/myenv/bin/activate \
   --hour 2 \
   --minute 0
+
+# Reinstall to pick up upstream prompt updates
+./install.sh ~/path/to/my-project --force
 ```
 
 ## Requirements
@@ -106,10 +109,33 @@ LOG_RETENTION_DAYS=30
 ### Custom prompt
 
 Edit `<repo>/.claude/daily-worker/prompt.md` to customize what Claude does.
-The installer won't overwrite an existing `prompt.md`.
+The installer won't overwrite an existing `prompt.md` unless you pass `--force`.
 
 The default prompt is generic — it reads `CLAUDE.md` from your repo for
 project-specific conventions, test commands, and domain rules.
+
+### Reinstalling / upgrading
+
+To pick up upstream prompt improvements:
+
+```bash
+./install.sh ~/path/to/my-project --force --no-schedule
+```
+
+`--force` overwrites `prompt.md` and `config.sh`. Use `--no-schedule` to skip
+re-registering the launchd agent if it's already set up.
+
+### Skipping TODO items
+
+Add `<!-- skip -->` to any TODO item you don't want the worker to pick up:
+
+```markdown
+- <!-- skip --> redesign the auth flow   ← worker will never pick this
+- add input validation                   ← worker picks this
+```
+
+The HTML comment is invisible when rendered, so your TODO.md stays clean.
+Remove the comment when you're ready for the worker to tackle it.
 
 ## Auto-Wake (optional)
 
