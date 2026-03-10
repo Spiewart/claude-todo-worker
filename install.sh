@@ -148,6 +148,35 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Append worker conventions to CLAUDE.md
+# ---------------------------------------------------------------------------
+CLAUDE_MD="$REPO_DIR/CLAUDE.md"
+MARKER="<!-- claude-todo-worker -->"
+
+if grep -qF "$MARKER" "$CLAUDE_MD" 2>/dev/null; then
+    echo "CLAUDE.md already has todo-worker section"
+else
+    echo "Appending todo-worker conventions to CLAUDE.md..."
+    cat >> "$CLAUDE_MD" <<EOF
+
+$MARKER
+## TODO Worker Conventions
+
+This repo has an automated TODO worker (claude-todo-worker) that picks items
+from \`TODO.md\` and opens PRs. The following conventions apply:
+
+- **\`<!-- skip -->\`**: Add this HTML comment to any TODO item to exclude it
+  from the worker. It is invisible when rendered. Remove it to re-enable.
+- **\`~~strikethrough~~\`**: Completed items are wrapped in strikethrough by
+  the worker. These can be deleted when the PR is merged.
+- **\`HIGH\`**: Items tagged HIGH are prioritized by the worker.
+- **\`blocked\`**: Items containing "blocked" are skipped.
+- Worker config: \`.claude/daily-worker/config.sh\`
+- Worker prompt: \`.claude/daily-worker/prompt.md\`
+EOF
+fi
+
+# ---------------------------------------------------------------------------
 # Ensure TODO.md exists with proper section markers
 # ---------------------------------------------------------------------------
 TODO_FILE="$REPO_DIR/TODO.md"
