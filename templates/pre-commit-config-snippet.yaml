@@ -1,0 +1,10 @@
+  # ── TODO.md patches auto-update (installed by claude-todo-worker) ──
+  - repo: local
+    hooks:
+      - id: update-todo-patches
+        name: update TODO.md patches
+        entry: python __WORKER_DIR__/update_todo_patches.py
+        language: python
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

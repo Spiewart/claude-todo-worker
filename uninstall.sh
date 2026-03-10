@@ -68,6 +68,29 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Remove pre-commit hook entry if present
+# ---------------------------------------------------------------------------
+PRE_COMMIT_CONFIG="$REPO_DIR/.pre-commit-config.yaml"
+if [[ -f "$PRE_COMMIT_CONFIG" ]] && grep -q "update-todo-patches" "$PRE_COMMIT_CONFIG" 2>/dev/null; then
+    echo "Removing update-todo-patches hook from .pre-commit-config.yaml..."
+    # Remove the local repo block containing update-todo-patches
+    python3 -c "
+import re
+path = '$PRE_COMMIT_CONFIG'
+content = open(path).read()
+# Remove the entire local repo block for update-todo-patches
+# Match from the comment or '- repo: local' through the hook definition
+pattern = r'\n?\s*#[^\n]*TODO\.md[^\n]*\n\s*- repo: local\n\s*hooks:\n\s*- id: update-todo-patches\n(?:\s+\w[^\n]*\n)*'
+new_content = re.sub(pattern, '', content)
+if new_content != content:
+    open(path, 'w').write(new_content)
+    print('Removed hook entry')
+else:
+    print('Could not auto-remove hook entry — please remove manually')
+" 2>&1
+fi
+
+# ---------------------------------------------------------------------------
 # Remove files if requested
 # ---------------------------------------------------------------------------
 if [[ "$REMOVE_FILES" == true ]]; then

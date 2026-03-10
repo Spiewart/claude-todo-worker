@@ -20,3 +20,14 @@ BRANCH_PREFIX="auto"
 # How many days to keep log files before rotation
 # Default: 30
 LOG_RETENTION_DAYS=30
+
+# Pre-commit hook: directories to scan for TODO comments (comma-separated, relative to repo root)
+# Leave empty to scan entire repo root
+# Examples:
+#   TODO_SCAN_DIRS="src"
+#   TODO_SCAN_DIRS="src,lib,app"
+TODO_SCAN_DIRS=""
+
+# Pre-commit hook: directories to exclude from scanning (comma-separated)
+# Leave empty to use defaults (node_modules, .venv, __pycache__, build, dist, etc.)
+TODO_EXCLUDE_DIRS=""
