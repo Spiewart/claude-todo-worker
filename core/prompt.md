@@ -26,20 +26,29 @@ maintainer to review.
 ## Workflow
 
 1. Read `TODO.md` thoroughly. Pick ONE actionable item.
-2. If a `CLAUDE.md` file exists, read it for project guidelines — follow them exactly.
-3. Explore the relevant source files to understand the codebase context.
-4. Implement the change following existing project conventions and patterns.
-5. Write or update tests for your changes.
-6. Run the project's test/lint/type-check suite. Look at `CLAUDE.md`, `Makefile`,
+2. **Check for duplicate PRs**: Before implementing, verify no existing PR addresses
+   this item:
+   - Run `gh pr list --search "<first few significant words of the item>" --state open`
+     to check open PRs.
+   - Run `gh pr list --search "<first few significant words of the item>" --state merged --limit 10`
+     to check recently merged PRs.
+   - If a matching PR exists (open or recently merged), **skip this item** and pick
+     the next one from TODO.md. Repeat until you find an item with no matching PR.
+   - Use the first few significant words of the TODO item as search keywords.
+3. If a `CLAUDE.md` file exists, read it for project guidelines — follow them exactly.
+4. Explore the relevant source files to understand the codebase context.
+5. Implement the change following existing project conventions and patterns.
+6. Write or update tests for your changes.
+7. Run the project's test/lint/type-check suite. Look at `CLAUDE.md`, `Makefile`,
    `pyproject.toml`, `package.json`, or similar for the correct commands.
-7. Fix any failures. Iterate until clean.
-8. **Mark the TODO as done**: Edit `TODO.md` and wrap the completed item with
+8. Fix any failures. Iterate until clean.
+9. **Mark the TODO as done**: Edit `TODO.md` and wrap the completed item with
    `~~strikethrough~~` markdown. For example, change
    `- fix the authentication bug` to `- ~~fix the authentication bug~~`.
    This signals to the maintainer that the item was addressed in this PR.
-9. Commit with a descriptive message.
-10. Push the branch: `git push -u origin HEAD`
-11. Create a PR with `gh pr create`. Include in the body:
+10. Commit with a descriptive message.
+11. Push the branch: `git push -u origin HEAD`
+12. Create a PR with `gh pr create`. Include in the body:
     - Summary of what was done and why
     - Which TODO.md item was addressed
     - Bullet list of changes

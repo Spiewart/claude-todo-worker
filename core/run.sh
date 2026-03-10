@@ -141,6 +141,132 @@ cd "$REPO_DIR"
 DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
 git fetch origin "$DEFAULT_BRANCH" 2>/dev/null || echo "WARNING: Could not fetch from origin"
 
+# ---------------------------------------------------------------------------
+# Pre-processing: Audit recent commits for manually addressed TODOs
+# ---------------------------------------------------------------------------
+LAST_RUN_FILE="$SCRIPT_DIR/.last_run"
+TODO_FILE="$REPO_DIR/TODO.md"
+
+if [[ -f "$TODO_FILE" ]]; then
+    echo ""
+    echo "--- Pre-processing: auditing recent commits ---"
+
+    SINCE_DATE=""
+    if [[ -f "$LAST_RUN_FILE" ]]; then
+        SINCE_DATE=$(cat "$LAST_RUN_FILE")
+        echo "Last run: $SINCE_DATE"
+    else
+        echo "No previous run recorded — checking last 7 days"
+    fi
+
+    python3 - "$TODO_FILE" "$SINCE_DATE" "$REPO_DIR" << 'AUDIT_SCRIPT'
+import re, subprocess, sys
+
+todo_file = sys.argv[1]
+since = sys.argv[2]
+repo_dir = sys.argv[3]
+
+# Get recent commit messages
+cmd = ["git", "-C", repo_dir, "log", "--oneline", "--format=%s"]
+if since:
+    cmd.append(f"--since={since}")
+else:
+    cmd.extend(["--since=7 days ago"])
+
+result = subprocess.run(cmd, capture_output=True, text=True)
+commit_messages = [m for m in result.stdout.strip().split("\n") if m.strip()]
+
+if not commit_messages:
+    print("No recent commits to audit")
+    sys.exit(0)
+
+print(f"Checking {len(commit_messages)} recent commit(s) against TODO items...")
+
+# Read TODO items (non-strikethrough list items)
+content = open(todo_file).read()
+lines = content.split("\n")
+modified = False
+
+for i, line in enumerate(lines):
+    # Skip already struck-through items
+    if "~~" in line:
+        continue
+    # Match list items: - some text or - **some text**
+    m = re.match(r"^(\s*[-*]\s+)(.+)", line)
+    if not m:
+        continue
+    item_text = m.group(2).strip()
+    # Strip markdown formatting for comparison
+    clean_text = re.sub(r"[*_`\[\]()]", "", item_text).lower()
+
+    # Split item into significant words (>3 chars)
+    words = [w for w in re.split(r"\W+", clean_text) if len(w) > 3]
+    if not words:
+        continue
+
+    for msg in commit_messages:
+        msg_lower = msg.lower()
+        # Require at least 60% of significant words to match
+        matches = sum(1 for w in words if w in msg_lower)
+        if len(words) > 0 and matches / len(words) >= 0.6:
+            prefix = m.group(1)
+            lines[i] = f"{prefix}~~{m.group(2)}~~"
+            modified = True
+            print(f"  Matched: {item_text[:70]}")
+            break
+
+if modified:
+    open(todo_file, "w").write("\n".join(lines))
+    print("TODO.md updated with commit-matched completions")
+else:
+    print("No TODO items matched recent commits")
+AUDIT_SCRIPT
+
+    # ── Clean up strikethrough items ──
+    echo ""
+    echo "--- Pre-processing: cleaning up completed items ---"
+
+    python3 - "$TODO_FILE" << 'CLEANUP_SCRIPT'
+import re, sys
+
+todo_file = sys.argv[1]
+content = open(todo_file).read()
+lines = content.split("\n")
+cleaned = []
+removed = 0
+
+for line in lines:
+    # Match list items (- or *) that contain ~~strikethrough~~
+    if re.match(r"^\s*[-*]\s+.*~~.+~~", line):
+        removed += 1
+    else:
+        cleaned.append(line)
+
+# Remove consecutive blank lines left by removal
+result = re.sub(r"\n{3,}", "\n\n", "\n".join(cleaned))
+
+if removed > 0:
+    open(todo_file, "w").write(result)
+    print(f"Removed {removed} completed item(s) from TODO.md")
+else:
+    print("No completed items to clean up")
+CLEANUP_SCRIPT
+
+    # Commit cleanup if there were changes
+    if ! git -C "$REPO_DIR" diff --quiet "$TODO_FILE" 2>/dev/null; then
+        echo "Committing TODO.md cleanup..."
+        git -C "$REPO_DIR" add "$TODO_FILE"
+        git -C "$REPO_DIR" commit -m "chore: audit and clean up completed TODO items
+
+Automated by claude-todo-worker pre-processing." 2>&1
+        git -C "$REPO_DIR" push 2>&1 || echo "WARNING: Could not push cleanup commit (branch protection?)"
+    fi
+
+    # Record this run's timestamp
+    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$LAST_RUN_FILE"
+    echo ""
+fi
+
 # If a worktree from today already exists, check if it has unsaved work
 if [[ -d "$WORKTREE_DIR" ]]; then
     echo "Found existing worktree from earlier today: $WORKTREE_DIR"
