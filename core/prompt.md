@@ -19,9 +19,11 @@ maintainer to review.
 2. If HIGH items are too large or blocked, pick from smaller code-level TODOs
    and `NotImplementedError` stubs — these are concrete, self-contained fixes.
 3. If no small items are actionable, pick from larger planned features.
-4. **Skip items** that say "blocked", have unmet dependencies, or require
+4. **Skip items** that contain `<!-- skip -->` — these are reserved for the
+   maintainer and must never be picked by the worker.
+5. Also skip items that say "blocked", have unmet dependencies, or require
    external data/research you can't do.
-5. Prefer items that are self-contained and testable.
+6. Prefer items that are self-contained and testable.
 
 ## Workflow
 
