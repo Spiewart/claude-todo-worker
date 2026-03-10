@@ -159,68 +159,172 @@ if [[ -f "$TODO_FILE" ]]; then
         echo "No previous run recorded — checking last 7 days"
     fi
 
-    python3 - "$TODO_FILE" "$SINCE_DATE" "$REPO_DIR" << 'AUDIT_SCRIPT'
-import re, subprocess, sys
+    # Phase 1: Candidate pre-filter — keyword matching to identify potential matches
+    CANDIDATES_FILE="$SCRIPT_DIR/.audit_candidates.json"
+
+    python3 - "$TODO_FILE" "$SINCE_DATE" "$REPO_DIR" "$CANDIDATES_FILE" << 'CANDIDATE_SCRIPT'
+import json, re, subprocess, sys
 
 todo_file = sys.argv[1]
 since = sys.argv[2]
 repo_dir = sys.argv[3]
+candidates_file = sys.argv[4]
 
-# Get recent commit messages
-cmd = ["git", "-C", repo_dir, "log", "--oneline", "--format=%s"]
+# Get recent commits with short hash + subject
+cmd = ["git", "-C", repo_dir, "log", "--format=%h %s", "--no-merges"]
 if since:
     cmd.append(f"--since={since}")
 else:
     cmd.extend(["--since=7 days ago"])
 
 result = subprocess.run(cmd, capture_output=True, text=True)
-commit_messages = [m for m in result.stdout.strip().split("\n") if m.strip()]
+raw_lines = [l for l in result.stdout.strip().split("\n") if l.strip()]
 
-if not commit_messages:
+if not raw_lines:
     print("No recent commits to audit")
+    json.dump({"candidates": []}, open(candidates_file, "w"))
     sys.exit(0)
 
-print(f"Checking {len(commit_messages)} recent commit(s) against TODO items...")
+# Parse hash + message
+commits = []
+for line in raw_lines:
+    parts = line.split(" ", 1)
+    if len(parts) == 2:
+        commits.append({"hash": parts[0], "message": parts[1]})
+
+print(f"Checking {len(commits)} recent commit(s) against TODO items...")
 
 # Read TODO items (non-strikethrough list items)
 content = open(todo_file).read()
 lines = content.split("\n")
-modified = False
+candidates = []
+
+MATCH_THRESHOLD = 0.4  # Lower threshold — Claude provides real filtering
 
 for i, line in enumerate(lines):
-    # Skip already struck-through items
     if "~~" in line:
         continue
-    # Match list items: - some text or - **some text**
     m = re.match(r"^(\s*[-*]\s+)(.+)", line)
     if not m:
         continue
     item_text = m.group(2).strip()
-    # Strip markdown formatting for comparison
     clean_text = re.sub(r"[*_`\[\]()]", "", item_text).lower()
-
-    # Split item into significant words (>3 chars)
     words = [w for w in re.split(r"\W+", clean_text) if len(w) > 3]
     if not words:
         continue
 
-    for msg in commit_messages:
-        msg_lower = msg.lower()
-        # Require at least 60% of significant words to match
+    best_match = {"ratio": 0, "commits": []}
+    for c in commits:
+        msg_lower = c["message"].lower()
         matches = sum(1 for w in words if w in msg_lower)
-        if len(words) > 0 and matches / len(words) >= 0.6:
-            prefix = m.group(1)
-            lines[i] = f"{prefix}~~{m.group(2)}~~"
-            modified = True
-            print(f"  Matched: {item_text[:70]}")
-            break
+        ratio = matches / len(words) if words else 0
+        if ratio >= MATCH_THRESHOLD:
+            # Get file-change summary (only lines with | showing files changed)
+            stat_result = subprocess.run(
+                ["git", "-C", repo_dir, "diff-tree", "--stat", "--no-commit-id", c["hash"]],
+                capture_output=True, text=True
+            )
+            # Keep only file stat lines (contain |) and the summary line, cap at 8
+            stat_lines = [l.strip() for l in stat_result.stdout.strip().split("\n")
+                         if "|" in l or "changed" in l]
+            stat = "\n".join(stat_lines[:8])
+            best_match["commits"].append({
+                "hash": c["hash"],
+                "message": c["message"],
+                "stat": stat
+            })
+            best_match["ratio"] = max(best_match["ratio"], ratio)
 
-if modified:
-    open(todo_file, "w").write("\n".join(lines))
-    print("TODO.md updated with commit-matched completions")
+    if best_match["commits"]:
+        # Keep only the top 3 most relevant commits per candidate
+        candidates.append({
+            "line_index": i,
+            "item_text": item_text,
+            "matched_commits": best_match["commits"][:3],
+            "best_ratio": best_match["ratio"]
+        })
+
+# Sort by best match ratio (highest first) and cap at 15 candidates
+candidates.sort(key=lambda c: c["best_ratio"], reverse=True)
+MAX_CANDIDATES = 15
+kept = candidates[:MAX_CANDIDATES]
+
+for c in kept:
+    print(f"  Candidate ({c['best_ratio']:.0%}): {c['item_text'][:70]}")
+
+json.dump({"candidates": kept}, open(candidates_file, "w"), indent=2)
+if kept:
+    total = len(candidates)
+    msg = f"\n{len(kept)} candidate(s) identified for Claude review"
+    if total > MAX_CANDIDATES:
+        msg += f" ({total - MAX_CANDIDATES} lower-confidence matches omitted)"
+    print(msg)
 else:
     print("No TODO items matched recent commits")
-AUDIT_SCRIPT
+CANDIDATE_SCRIPT
+
+    # Phase 2: Build audit review addendum for the worker prompt
+    # Instead of a separate API call, the worker session reviews candidates
+    # as part of its normal workflow (no extra cost).
+    AUDIT_ADDENDUM_FILE="$SCRIPT_DIR/.audit_addendum.md"
+
+    if [[ -f "$CANDIDATES_FILE" ]] && python3 -c "
+import json, sys
+data = json.load(open(sys.argv[1]))
+sys.exit(0 if data.get('candidates') else 1)
+" "$CANDIDATES_FILE" 2>/dev/null; then
+        echo "Building audit review addendum for worker prompt..."
+
+        python3 - "$CANDIDATES_FILE" "$AUDIT_ADDENDUM_FILE" << 'BUILD_ADDENDUM'
+import json, sys
+
+candidates_path = sys.argv[1]
+addendum_path = sys.argv[2]
+
+data = json.load(open(candidates_path))
+candidates = data["candidates"]
+
+addendum = """## Pre-task: Review Audit Candidates
+
+Before picking a TODO item, review the following candidates that a keyword match
+flagged as potentially addressed by recent commits. For each candidate, check
+whether the commit message and changed files genuinely address the TODO item.
+
+**Be conservative**: only mark an item as done if the commit clearly addresses it.
+A commit that merely touches related files or uses similar words is NOT enough —
+the commit message must indicate the specific work described in the TODO was done.
+
+For each confirmed candidate, wrap the TODO item with `~~strikethrough~~` in
+TODO.md (same format as step 9). Leave false positives untouched.
+
+"""
+
+for i, c in enumerate(candidates):
+    addendum += f"### Candidate {i + 1}\n"
+    addendum += f"**TODO item**: {c['item_text']}\n\n"
+    for cm in c["matched_commits"]:
+        addendum += f"- Commit `{cm['hash']}`: {cm['message']}\n"
+        if cm.get("stat"):
+            addendum += f"  ```\n"
+            for line in cm["stat"].strip().split("\n"):
+                addendum += f"  {line}\n"
+            addendum += f"  ```\n"
+    addendum += "\n"
+
+addendum += "After reviewing all candidates, proceed with the normal workflow below.\n\n---\n\n"
+
+with open(addendum_path, "w") as f:
+    f.write(addendum)
+
+print(f"  Audit addendum written with {len(candidates)} candidate(s)")
+BUILD_ADDENDUM
+    else
+        # No candidates — ensure no stale addendum
+        rm -f "$AUDIT_ADDENDUM_FILE"
+    fi
+
+    # Clean up candidates temp file
+    rm -f "$CANDIDATES_FILE"
 
     # ── Clean up strikethrough items ──
     echo ""
@@ -334,6 +438,15 @@ if [[ ! -f "$PROMPT_FILE" ]]; then
 fi
 
 FULL_PROMPT="$(cat "$PROMPT_FILE")"
+
+# Prepend audit review addendum if candidates were found during pre-processing
+AUDIT_ADDENDUM_FILE="$SCRIPT_DIR/.audit_addendum.md"
+if [[ -f "$AUDIT_ADDENDUM_FILE" ]]; then
+    echo "Including audit review addendum in prompt ($(wc -l < "$AUDIT_ADDENDUM_FILE") lines)"
+    FULL_PROMPT="$(cat "$AUDIT_ADDENDUM_FILE")
+${FULL_PROMPT}"
+    rm -f "$AUDIT_ADDENDUM_FILE"
+fi
 
 if [[ -n "$TODO_ITEM" ]]; then
     echo "Targeting specific TODO: $TODO_ITEM"
