@@ -360,9 +360,19 @@ CLEANUP_SCRIPT
     if ! git -C "$REPO_DIR" diff --quiet "$TODO_FILE" 2>/dev/null; then
         echo "Committing TODO.md cleanup..."
         git -C "$REPO_DIR" add "$TODO_FILE"
-        git -C "$REPO_DIR" commit -m "chore: audit and clean up completed TODO items
 
-Automated by claude-todo-worker pre-processing." 2>&1
+        # Pre-commit hooks (e.g., update-todo-patches) may modify TODO.md and
+        # return exit 1 on first attempt. Retry once after re-staging.
+        if ! git -C "$REPO_DIR" commit -m "chore: audit and clean up completed TODO items
+
+Automated by claude-todo-worker pre-processing." 2>&1; then
+            echo "Commit failed (likely pre-commit hook modified files). Re-staging and retrying..."
+            git -C "$REPO_DIR" add -u 2>&1
+            git -C "$REPO_DIR" commit -m "chore: audit and clean up completed TODO items
+
+Automated by claude-todo-worker pre-processing." 2>&1 || echo "WARNING: Cleanup commit failed after retry"
+        fi
+
         git -C "$REPO_DIR" push 2>&1 || echo "WARNING: Could not push cleanup commit (branch protection?)"
     fi
 
